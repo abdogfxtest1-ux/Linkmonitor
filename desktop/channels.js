@@ -48,33 +48,58 @@ const wgDir = () => { const d = data('wg'); fs.mkdirSync(d, { recursive: true })
 const confs = () => fs.readdirSync(wgDir()).filter((f) => f.endsWith('.conf')).sort()
 // بورتات WireGuard اللي سيرفرات Proton بتسمع عليها؛ لو المزوّد قافل بورت نجرب غيره
 const ALT_PORTS = [51820, 443, 4500, 500, 1224, 88]
-const goodPort = {}
-let wp = null
+// ملف كل بوراته فشلت مش بنعيد تجربته قبل نص ساعة، عشان ميضيّعش دقيقة كل جولة
+const DEAD_MS = 30 * 60 * 1000
+const dead = {}
+// المزوّد في مصر بيقرر لكل اتصال UDP جديد: يا يعدّي الـ handshake في أول ثواني يا يقفله على طول.
+// فبنجرب اتصالات جديدة كتير قصيرة، واللي يشتغل بنسيبه مفتوح بين الجولات بدل ما نبدأ من الأول.
+const ATTEMPTS = 8
+const MAX_OPEN = 4
+const tunnels = {} // name → {proc, proxy, used}
 
-function wgDown() { if (wp) { try { wp.kill() } catch (e) {} wp = null } }
+function close(name) { const t = tunnels[name]; if (t) { try { t.proc.kill() } catch (e) {} delete tunnels[name] } }
+function wgDown() { for (const n of Object.keys(tunnels)) close(n) }
 
 /** يشغّل ملف WireGuard كـ SOCKS proxy محلي. يرجّع {proxy, ip} أو {err}. */
 async function wgUp(name, log) {
-  wgDown()
-  const txt = fs.readFileSync(path.join(wgDir(), name), 'utf8')
+  if (tunnels[name]) {
+    const inf = await ipInfo(tunnels[name].proxy, 10000)
+    if (inf) { tunnels[name].used = Date.now(); return { proxy: tunnels[name].proxy, ip: inf } }
+    close(name)
+  }
+  if (dead[name] && Date.now() - dead[name] < DEAD_MS) return { err: 'السيرفر مردّش من شوية، هيتجرب تاني بعد نص ساعة' }
+  const file = path.join(wgDir(), name)
+  const txt = fs.readFileSync(file, 'utf8')
   const m = txt.match(/^\s*Endpoint\s*=\s*(\S+):(\d+)\s*$/im)
   if (!m) return { err: 'الملف مفيهوش Endpoint' }
-  const ports = [...new Set([goodPort[name], +m[2], ...ALT_PORTS].filter(Boolean))]
+  const ports = [...new Set([+m[2], ...ALT_PORTS])]
   const tmp = data('wp'); fs.mkdirSync(tmp, { recursive: true })
-  for (const p of ports) {
+  const base = name.replace(/\.conf$/, '')
+  for (let i = 0; i < ATTEMPTS; i++) {
+    const p = ports[i % ports.length]
     const conf = txt.replace(m[0], m[0].replace(/:\d+(\s*)$/, ':' + p + '$1'))
     const port = await freePort()
-    fs.writeFileSync(path.join(tmp, 'wg.conf'), conf)
-    fs.writeFileSync(path.join(tmp, 'wp.conf'), `WGConfig = ${fwd(path.join(tmp, 'wg.conf'))}\n\n[Socks5]\nBindAddress = 127.0.0.1:${port}\n`)
-    wp = spawn(path.join(vendor, 'wireproxy.exe'), ['-c', path.join(tmp, 'wp.conf')], { windowsHide: true })
-    wp.on('error', (e) => log('wireproxy: ' + e.message))
-    await sleep(1500)
+    fs.writeFileSync(path.join(tmp, base + '.wg.conf'), conf)
+    fs.writeFileSync(path.join(tmp, base + '.wp.conf'), `WGConfig = ${fwd(path.join(tmp, base + '.wg.conf'))}\n\n[Socks5]\nBindAddress = 127.0.0.1:${port}\n`)
+    const proc = spawn(path.join(vendor, 'wireproxy.exe'), ['-c', path.join(tmp, base + '.wp.conf')], { windowsHide: true })
+    proc.on('error', (e) => log('wireproxy: ' + e.message))
+    await sleep(1000)
     const proxy = `socks5://127.0.0.1:${port}`
-    const inf = await ipInfo(proxy, 6000)
-    if (inf) { goodPort[name] = p; return { proxy, ip: inf } }
-    wgDown()
+    // الـ handshake الناجح بيخلص في أقل من 7 ثواني، وأكتر من كده مبيفرقش
+    const inf = await ipInfo(proxy, 9000)
+    if (inf) {
+      // البورت اللي اشتغل يتحفظ في الملف نفسه، فالمرة الجاية يبدأ بيه على طول
+      if (p !== +m[2]) { fs.writeFileSync(file, conf); log(`${name}: اشتغل على بورت ${p} واتحفظ`) }
+      delete dead[name]
+      tunnels[name] = { proc, proxy, used: Date.now() }
+      const open = Object.entries(tunnels).sort((a, b) => a[1].used - b[1].used)
+      while (open.length > MAX_OPEN) close(open.shift()[0])
+      return { proxy, ip: inf }
+    }
+    try { proc.kill() } catch (e) {}
   }
-  return { err: `السيرفر مردّش (جرّبنا بورتات ${ports.join(',')})` }
+  dead[name] = Date.now()
+  return { err: `السيرفر مردّش بعد ${ATTEMPTS} محاولات (بورتات ${ports.join(',')})` }
 }
 
 // ---------------- Tor ----------------
@@ -206,9 +231,9 @@ async function torUp(cc, log, onProgress) {
 
 /** يفعّل القناة ويرجّع {proxy, ip} أو {err}. */
 async function activate(ch, log, onProgress) {
-  if (ch.cc) { wgDown(); return torUp(ch.cc, log, onProgress) }
+  // الأنفاق المفتوحة بتفضل شغالة في الجولات التانية؛ كل قناة ليها proxy لوحدها فمش بتأثر على بعض
+  if (ch.cc) return torUp(ch.cc, log, onProgress)
   if (ch.file) return wgUp(ch.file, log)
-  wgDown()
   return { proxy: 'direct://', ip: await ipInfo('direct://') }
 }
 
