@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>Link Monitor</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --line:#dcdfe4; --text:#1d2129; --muted:#6b7280; --accent:#2563eb; --ok:#16a34a; --bad:#dc2626; --warn:#d97706; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14161a; --card:#1d2026; --line:#30343c; --text:#e6e8eb; --muted:#9aa1ab; --accent:#4f8cff; } }
+  * { box-sizing:border-box }
+  body { margin:0; font:14px/1.5 "Segoe UI", Tahoma, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:12px 16px; border-bottom:1px solid var(--line); background:var(--card); display:grid; gap:8px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  input[type=text], input[type=number] { padding:7px 10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--text); font:inherit; }
+  #url { flex:1; min-width:260px; direction:ltr; }
+  #cc { width:180px; direction:ltr; }
+  #dur { width:70px; }
+  button { padding:7px 14px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--text); font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  label { display:inline-flex; gap:6px; align-items:center; }
+  #status { color:var(--muted); }
+  main { padding:12px 16px; display:grid; grid-template-columns:repeat(auto-fill, minmax(420px, 1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; overflow:hidden; display:flex; flex-direction:column; }
+  .card .t { padding:8px 10px; border-bottom:1px solid var(--line); cursor:pointer; white-space:pre-line; font-size:13px; }
+  .card .t b { font-size:14px; }
+  .card .box { height:300px; background:#fff; position:relative; }
+  .card.big .box { height:620px; }
+  .card webview { position:absolute; inset:0; width:100%; height:100%; }
+  .card .a { display:flex; gap:8px; padding:8px 10px; border-top:1px solid var(--line); }
+  .card .a button { flex:1; }
+  #log { margin:0 16px 16px; padding:10px; background:var(--card); border:1px solid var(--line); border-radius:8px; font:12px/1.5 Consolas, monospace; direction:ltr; text-align:left; max-height:220px; overflow:auto; white-space:pre; }
+  dialog { border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--text); max-width:560px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <input id="url" type="text" placeholder="ألصق اللينك هنا">
+    <button id="add" class="primary">إضافة</button>
+    <button id="startAll">▶ تشغيل الكل</button>
+    <button id="stopAll">■ إيقاف الكل</button>
+  </div>
+  <div class="row">
+    <label>مدة المراقبة بعد التحميل (ثانية) <input id="dur" type="number" value="30" min="5" max="600"></label>
+    <label><input id="direct" type="checkbox" checked> ضمّ الاتصال المباشر في التبديل</label>
+    <label><input id="tor" type="checkbox"> استخدم Tor</label>
+    <input id="cc" type="text" value="us,de,nl,fr,gb" placeholder="أكواد الدول: us,de">
+  </div>
+  <div class="row">
+    <button id="imp">استيراد VPN</button>
+    <button id="clr">مسح ملفات VPN</button>
+    <button id="help">ازاي أجيب VPN؟</button>
+    <button id="csv">تصدير CSV</button>
+    <button id="shots">فولدر اللقطات</button>
+    <span id="status">جاهز</span>
+  </div>
+</header>
+<main id="cards"></main>
+<pre id="log"></pre>
+<dialog id="dlg">
+  <h3>ملفات VPN مجانية (Proton)</h3>
+  <p>البرنامج محتاج ملفات WireGuard عشان يغيّر الـ IP والدولة. مجاناً:</p>
+  <ol>
+    <li>اعمل حساب Proton VPN مجاني</li>
+    <li>سجّل دخول من account.protonvpn.com</li>
+    <li>افتح Downloads ثم WireGuard configuration</li>
+    <li>اختار Windows أو أي نظام، واختار سيرفر/دولة، واضغط Create ثم Download</li>
+    <li>كرر لدول وسيرفرات مختلفة (كل ملف = IP مختلف)</li>
+    <li>ارجع هنا واضغط «استيراد VPN» واختار الملفات</li>
+  </ol>
+  <p>الـ VPN بيشتغل جوه البرنامج بس، ومش محتاج تسطّب WireGuard ولا صلاحيات أدمن.<br>بديل بدون حساب: فعّل Tor وحط أكواد الدول، وهو بيدخل عن طريق bridges لو المزوّد قافله.</p>
+  <div class="row"><button id="proton" class="primary">فتح Proton</button><button id="close">تمام</button></div>
+</dialog>
+<script src="renderer.js"></script>
+</body>
+</html>

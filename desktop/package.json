@@ -1,0 +1,24 @@
+{
+  "name": "linkmonitor",
+  "productName": "LinkMonitor",
+  "version": "0.5.0",
+  "description": "Link Monitor — Desktop",
+  "main": "main.js",
+  "author": "Link Monitor",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "43.7.7",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "com.linkmonitor.desktop",
+    "productName": "LinkMonitor",
+    "files": ["*.js", "index.html"],
+    "extraResources": [{ "from": "vendor", "to": "vendor" }],
+    "win": { "target": "portable" },
+    "portable": { "artifactName": "LinkMonitor-${version}.exe" }
+  }
+}
